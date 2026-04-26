@@ -125,7 +125,7 @@ function getRotatedBounds(
 }
 
 export default function RoomCanvas() {
-  const scale = 10;
+  const scale = 15;
   const gridSize = 0.5 * scale;
   const stageRef = useRef<any>(null);
 
@@ -150,6 +150,13 @@ export default function RoomCanvas() {
   const [selectedRoom, setSelectedRoom] = useState<RoomKey>("kinsmen");
   const [dividerMode, setDividerMode] = useState<DividerMode>("full");
 
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [chairMenuOpen, setChairMenuOpen] = useState(false);
+  const [loadMenuOpen, setLoadMenuOpen] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+
+  const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
+
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [selectedChairId, setSelectedChairId] = useState<number | null>(null);
   const [selectedChairRowId, setSelectedChairRowId] = useState<number | null>(null);
@@ -167,6 +174,9 @@ export default function RoomCanvas() {
 
   const [savedLayouts, setSavedLayouts] = useState<SavedLayout[]>([]);
   const [selectedSavedLayoutId, setSelectedSavedLayoutId] = useState("");
+
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveNameInput, setSaveNameInput] = useState("");
 
   const [roomTables, setRoomTables] = useState<Record<RoomKey, TableItem[]>>({
     kinsmen: [
@@ -227,9 +237,13 @@ export default function RoomCanvas() {
   const chairBlocks = roomChairBlocks[selectedRoom];
   const room = rooms[selectedRoom];
 
-  const width = room.widthFt * scale;
-  const height = room.heightFt * scale;
+  const isLandscape = orientation === "landscape";
+
+  const width = (isLandscape ? room.heightFt : room.widthFt) * scale;
+  const height = (isLandscape ? room.widthFt : room.heightFt) * scale;
+
   const dividerY = room.dividerFt * scale;
+  const dividerX = width / 2;
 
   const counts = useMemo(() => {
     const rectTables = tables.filter((t) => t.type === "rect").length;
@@ -331,11 +345,19 @@ export default function RoomCanvas() {
     if (dividerMode === "full") {
       return { minX: 0, maxX: width, minY: 0, maxY: height };
     }
-
+  
+    if (isLandscape) {
+      if (dividerMode === "top") {
+        return { minX: 0, maxX: dividerX, minY: 0, maxY: height };
+      }
+  
+      return { minX: dividerX, maxX: width, minY: 0, maxY: height };
+    }
+  
     if (dividerMode === "top") {
       return { minX: 0, maxX: width, minY: 0, maxY: dividerY };
     }
-
+  
     return { minX: 0, maxX: width, minY: dividerY, maxY: height };
   }
 
@@ -709,7 +731,6 @@ export default function RoomCanvas() {
               align-items: start;
             }
             .room-wrap {
-              border: 2px solid #111;
               padding: 8px;
               background: white;
             }
@@ -725,7 +746,6 @@ export default function RoomCanvas() {
               width: 100%;
               max-height: 520px;
               object-fit: contain;
-              border: 2px solid #111;
               background: white;
             }
             .side-stack {
@@ -793,13 +813,6 @@ export default function RoomCanvas() {
                   <div class="line"><strong>Square Tables:</strong> ${counts.squareTables}</div>
                   <div class="line"><strong>Round Tables:</strong> ${counts.roundTables}</div>
                   <div class="line"><strong>High Top Tables:</strong> ${counts.highTopTables}</div>
-                  <div class="line"><strong>Total Tables:</strong> ${counts.totalTables}</div>
-                  <div class="line"><strong>Attached Chairs on Tables:</strong> ${counts.attachedChairsOnTables}</div>
-                  <div class="line"><strong>Single Chairs:</strong> ${counts.singleChairs}</div>
-                  <div class="line"><strong>Chair Row Groups:</strong> ${counts.chairRowGroups}</div>
-                  <div class="line"><strong>Chairs in Rows:</strong> ${counts.chairsInRows}</div>
-                  <div class="line"><strong>Chair Block Groups:</strong> ${counts.chairBlockGroups}</div>
-                  <div class="line"><strong>Chairs in Blocks:</strong> ${counts.chairsInBlocks}</div>
                   <div class="line"><strong>Total Chairs:</strong> ${counts.totalChairs}</div>
                 </div>
               </div>
@@ -1508,6 +1521,91 @@ export default function RoomCanvas() {
 
     return positions;
   }
+  function applyPreset(preset: "empty" | "banquet" | "classroom" | "theatre") {
+    clearSelection();
+  
+    if (preset === "empty") {
+      resetCurrentRoomToBlank();
+      return;
+    }
+  
+    const bounds = getActiveBounds();
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const startY = bounds.minY + 70;
+  
+    const tableWidth = 6 * scale;
+    const tableHeight = 2.5 * scale;
+  
+    let newTables: TableItem[] = [];
+    let newChairRows: ChairRowItem[] = [];
+  
+    if (preset === "banquet") {
+      newTables = Array.from({ length: 6 }).map((_, i) =>
+        normalizeTable({
+          id: Date.now() + i,
+          type: "rect",
+          x: centerX + ((i % 2) - 0.5) * 90,
+          y: startY + Math.floor(i / 2) * 90,
+          width: tableWidth,
+          height: tableHeight,
+          rotation: 0,
+          showAttachedChairs: true,
+          seatCount: 6,
+          seatLayout: "even",
+        })
+      );
+    }
+  
+    if (preset === "classroom") {
+      newTables = Array.from({ length: 8 }).map((_, i) =>
+        normalizeTable({
+          id: Date.now() + i,
+          type: "rect",
+          x: centerX + ((i % 2) - 0.5) * 90,
+          y: startY + Math.floor(i / 2) * 65,
+          width: tableWidth,
+          height: tableHeight,
+          rotation: 0,
+          showAttachedChairs: true,
+          seatCount: 3,
+          seatLayout: "oneSide",
+        })
+      );
+    }
+  
+    if (preset === "theatre") {
+      newChairRows = Array.from({ length: 8 }).map((_, i) => ({
+        id: Date.now() + i,
+        x: centerX,
+        y: startY + i * 35,
+        chairCount: 10,
+        chairWidth: 1.75 * scale,
+        chairHeight: 1.5 * scale,
+        spacing: 0.8 * scale,
+        rotation: 0,
+      }));
+    }
+  
+    setRoomTables((prev) => ({
+      ...prev,
+      [selectedRoom]: newTables,
+    }));
+  
+    setRoomChairs((prev) => ({
+      ...prev,
+      [selectedRoom]: [],
+    }));
+  
+    setRoomChairRows((prev) => ({
+      ...prev,
+      [selectedRoom]: newChairRows,
+    }));
+  
+    setRoomChairBlocks((prev) => ({
+      ...prev,
+      [selectedRoom]: [],
+    }));
+  }
 
   function addRectTable() {
     const spawn = getDefaultSpawnPoint();
@@ -1703,199 +1801,201 @@ export default function RoomCanvas() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center gap-6 bg-gray-100 text-black p-6">
-      <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-lg shadow">
-        <select
-          value={selectedRoom}
-          onChange={(e) => {
-            setSelectedRoom(e.target.value as RoomKey);
-            clearSelection();
+    <div className="min-h-screen flex flex-col items-center gap-6 bg-gray-900 text-white p-6">
+      <div className="w-full max-w-6xl flex items-start justify-between gap-6 bg-gray-800 p-4 rounded-xl shadow-lg border border-gray-700">
+
+
+{/* LEFT SIDE: ACTIONS + PRESETS */}
+<div className="flex flex-wrap items-center gap-3">
+
+  <button onClick={() => applyPreset("banquet")} className="rounded bg-purple-600 px-4 py-2 text-white">
+    Presets
+  </button>
+
+  <button onClick={duplicateSelectedItem} className="rounded bg-cyan-700 px-4 py-2 text-white">
+    Copy
+  </button>
+
+  <button onClick={rotateSelectedItem} className="rounded bg-gray-600 px-4 py-2 text-white">
+    Rotate
+  </button>
+
+  <button
+    onClick={resetCurrentRoomToBlank}
+    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded shadow"
+  >
+    Clear
+  </button>
+
+  <button onClick={deleteSelectedItem} className="rounded bg-red-700 px-4 py-2 text-white">
+    Delete
+  </button>
+
+</div>
+
+{/* RIGHT SIDE: ROOM + SIZE */}
+<div className="flex items-center gap-3">
+
+  <select
+    value={selectedRoom}
+    onChange={(e) => {
+      setSelectedRoom(e.target.value as RoomKey);
+      clearSelection();
+    }}
+    className="border border-gray-500 bg-gray-200 text-black p-2 rounded"
+  >
+    <option value="kinsmen">Kinsmen Room</option>
+    <option value="accursi">Accursi Room</option>
+  </select>
+
+  <select
+    value={dividerMode}
+    onChange={(e) => setDividerMode(e.target.value as DividerMode)}
+    className="border border-gray-500 bg-gray-200 text-black p-2 rounded"
+  >
+    <option value="full">Full Room</option>
+    <option value="top">Top Half</option>
+    <option value="bottom">Bottom Half</option>
+  </select>
+
+  <button
+    onClick={() =>
+      setOrientation((current) =>
+        current === "portrait" ? "landscape" : "portrait"
+      )
+    }
+    className="rounded bg-gray-500 px-4 py-2 text-white"
+  >
+    Flip Layout
+  </button>
+
+</div>
+
+</div>
+
+
+
+
+
+<div className="w-full max-w-6xl flex justify-center items-center gap-8">
+
+  {/* LEFT GROUP: TABLES + CHAIRS */}
+  <div className="flex gap-3">
+
+    <div className="relative">
+      <button
+        onClick={() => setTableMenuOpen((open) => !open)}
+        className="rounded bg-blue-600 px-4 py-2 text-white"
+      >
+        Add Tables
+      </button>
+
+      {tableMenuOpen && (
+        <div className="absolute z-50 mt-2 w-48 rounded bg-white text-black shadow-lg border border-gray-300">
+          <button onClick={() => { addRectTable(); setTableMenuOpen(false); }} className="block w-full px-4 py-2 text-left hover:bg-gray-100">6 ft Table</button>
+          <button onClick={() => { addSquareTable(); setTableMenuOpen(false); }} className="block w-full px-4 py-2 text-left hover:bg-gray-100">36" Square Table</button>
+          <button onClick={() => { addRoundTable(); setTableMenuOpen(false); }} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Round Table</button>
+          <button onClick={() => { addHighTopTable(); setTableMenuOpen(false); }} className="block w-full px-4 py-2 text-left hover:bg-gray-100">High Top</button>
+        </div>
+      )}
+    </div>
+
+    <div className="relative">
+      <button
+        onClick={() => setChairMenuOpen((open) => !open)}
+        className="rounded bg-green-600 px-4 py-2 text-white"
+      >
+        Add Chairs
+      </button>
+
+      {chairMenuOpen && (
+        <div className="absolute z-50 mt-2 w-56 rounded bg-white text-black shadow-lg border border-gray-300">
+          <button onClick={() => { addChair(); setChairMenuOpen(false); }} className="block w-full px-4 py-2 text-left hover:bg-gray-100">Single Chair</button>
+
+          <div className="border-t p-3">
+            <div className="text-sm font-semibold">Chair Row</div>
+            <div className="mt-2 flex gap-2">
+              <input type="number" value={rowChairCount} onChange={(e) => setRowChairCount(Number(e.target.value))} className="w-16 border p-1" />
+              <button onClick={() => { addChairRow(); setChairMenuOpen(false); }} className="bg-green-700 px-2 text-white rounded">Add</button>
+            </div>
+          </div>
+
+          <div className="border-t p-3">
+            <div className="text-sm font-semibold">Chair Block</div>
+            <div className="mt-2 flex gap-2">
+              <input type="number" value={blockRows} onChange={(e) => setBlockRows(Number(e.target.value))} className="w-12 border p-1" />
+              <span>x</span>
+              <input type="number" value={blockCols} onChange={(e) => setBlockCols(Number(e.target.value))} className="w-12 border p-1" />
+              <button onClick={() => { addChairBlock(); setChairMenuOpen(false); }} className="bg-emerald-700 px-2 text-white rounded">Add</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+  </div>
+
+  {/* RIGHT GROUP: SAVE + EXPORT */}
+  <div className="flex gap-3">
+  <div className="relative">
+  <button
+    onClick={() => setLoadMenuOpen((open) => !open)}
+    className="rounded bg-gray-700 px-4 py-2 text-white"
+  >
+    Load
+  </button>
+
+  {loadMenuOpen && (
+    <div className="absolute z-50 mt-2 w-56 rounded bg-white text-black shadow-lg border border-gray-300 max-h-60 overflow-y-auto">
+      {savedLayouts.length === 0 && (
+        <div className="p-3 text-sm text-gray-500">No saved layouts</div>
+      )}
+
+      {savedLayouts.map((layout, i) => (
+        <button
+          key={i}
+          onClick={() => {
+            setSelectedSavedLayoutId(layout.id);
+            setLoadMenuOpen(false);
+            setTimeout(() => loadSelectedLayout(), 0);
           }}
-          className="border border-gray-400 bg-white text-black p-2 rounded"
+          className="block w-full px-4 py-2 text-left hover:bg-gray-100"
         >
-          <option value="kinsmen">Kinsmen Room</option>
-          <option value="accursi">Accursi Room</option>
-        </select>
-
-        <select
-          value={dividerMode}
-          onChange={(e) => setDividerMode(e.target.value as DividerMode)}
-          className="border border-gray-400 bg-white text-black p-2 rounded"
-        >
-          <option value="full">Full Room</option>
-          <option value="top">Top Half</option>
-          <option value="bottom">Bottom Half</option>
-        </select>
-
-        <button onClick={addRectTable} className="rounded bg-blue-600 px-4 py-2 text-white">
-          Add 6 ft Table
+          {layout.name || `Layout ${i + 1}`}
         </button>
+      ))}
+    </div>
+  )}
+</div>
 
-        <button onClick={addSquareTable} className="rounded bg-blue-600 px-4 py-2 text-white">
-          Add 36&quot; Square Table
-        </button>
+<button
+  onClick={() => {
+    setSaveNameInput(layoutName);
+    setSaveModalOpen(true);
+  }}
+  className="rounded bg-blue-600 px-4 py-2 text-white"
+>
+  Save
+</button>
 
-        <button onClick={addRoundTable} className="rounded bg-blue-600 px-4 py-2 text-white">
-          Add Round Table
-        </button>
+<button
+  onClick={() => setExportModalOpen(true)}
+  className="rounded bg-gray-200 text-black px-4 py-2"
+>
+  Export
+</button>
+  </div>
 
-        <button onClick={addHighTopTable} className="rounded bg-blue-600 px-4 py-2 text-white">
-          Add High Top
-        </button>
+</div>
 
-        <button onClick={addChair} className="rounded bg-green-600 px-4 py-2 text-white">
-          Add Chair
-        </button>
 
-        <div className="flex items-center gap-2 rounded border border-gray-300 bg-white p-2">
-          <label className="text-sm text-black">Row chairs</label>
-          <input
-            type="number"
-            min={1}
-            value={rowChairCount}
-            onChange={(e) => setRowChairCount(Number(e.target.value))}
-            className="w-16 rounded border border-gray-400 bg-white text-black p-1"
-          />
-          <button onClick={addChairRow} className="rounded bg-green-700 px-3 py-2 text-white">
-            Add Chair Row
-          </button>
-        </div>
 
-        <div className="flex items-center gap-2 rounded border border-gray-300 bg-white p-2">
-          <label className="text-sm text-black">Block</label>
-          <input
-            type="number"
-            min={1}
-            value={blockRows}
-            onChange={(e) => setBlockRows(Number(e.target.value))}
-            className="w-16 rounded border border-gray-400 bg-white text-black p-1"
-          />
-          <span className="text-black">x</span>
-          <input
-            type="number"
-            min={1}
-            value={blockCols}
-            onChange={(e) => setBlockCols(Number(e.target.value))}
-            className="w-16 rounded border border-gray-400 bg-white text-black p-1"
-          />
-          <button onClick={addChairBlock} className="rounded bg-emerald-700 px-3 py-2 text-white">
-            Add Chair Block
-          </button>
-        </div>
 
-        <button onClick={duplicateSelectedItem} className="rounded bg-cyan-700 px-4 py-2 text-white">
-          Duplicate Selected
-        </button>
 
-        <button onClick={rotateSelectedItem} className="rounded bg-gray-700 px-4 py-2 text-white">
-          Rotate Selected Item
-        </button>
 
-        <button onClick={deleteSelectedItem} className="rounded bg-red-600 px-4 py-2 text-white">
-          Delete Selected Item
-        </button>
 
-        <button onClick={exportAsPdf} className="rounded bg-black px-4 py-2 text-white">
-          Export PDF
-        </button>
-      </div>
 
-      <div className="w-full max-w-6xl rounded border border-gray-300 bg-white p-3">
-        <div className="mb-3 text-sm font-semibold">Layout Details</div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <input
-            type="text"
-            value={layoutName}
-            onChange={(e) => setLayoutName(e.target.value)}
-            placeholder="Layout name"
-            className="rounded border border-gray-400 bg-white text-black p-2"
-          />
-
-          <input
-            type="text"
-            value={renterName}
-            onChange={(e) => setRenterName(e.target.value)}
-            placeholder="Renter name"
-            className="rounded border border-gray-400 bg-white text-black p-2"
-          />
-
-          <input
-            type="text"
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
-            placeholder="Event type"
-            className="rounded border border-gray-400 bg-white text-black p-2"
-          />
-
-          <input
-            type="text"
-            value={guestCount}
-            onChange={(e) => setGuestCount(e.target.value)}
-            placeholder="Expected guest count"
-            className="rounded border border-gray-400 bg-white text-black p-2"
-          />
-
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Setup notes"
-            className="md:col-span-2 min-h-[90px] rounded border border-gray-400 bg-white text-black p-2"
-          />
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <button onClick={saveCurrentLayout} className="rounded bg-purple-600 px-4 py-2 text-white">
-            Save Layout
-          </button>
-
-          <button onClick={updateSavedLayout} className="rounded bg-amber-600 px-4 py-2 text-white">
-            Update Saved Layout
-          </button>
-
-          <select
-            value={selectedSavedLayoutId}
-            onChange={(e) => setSelectedSavedLayoutId(e.target.value)}
-            className="w-64 rounded border border-gray-400 bg-white text-black p-2"
-          >
-            <option value="">Select saved layout</option>
-            {savedLayouts.map((layout) => (
-              <option key={layout.id} value={layout.id}>
-                {layout.name} ({layout.selectedRoom})
-              </option>
-            ))}
-          </select>
-
-          <button onClick={loadSelectedLayout} className="rounded bg-indigo-600 px-4 py-2 text-white">
-            Load
-          </button>
-
-          <button onClick={deleteSelectedLayout} className="rounded bg-rose-600 px-4 py-2 text-white">
-            Delete Saved
-          </button>
-        </div>
-      </div>
-
-      <div className="w-full max-w-6xl rounded border border-gray-300 bg-white p-3">
-        <div className="mb-2 text-sm font-semibold">Current Room Legend / Counts</div>
-
-        <div className="grid grid-cols-1 gap-2 text-sm md:grid-cols-2 lg:grid-cols-3">
-          <div>Rectangular Tables: {counts.rectTables}</div>
-          <div>Square Tables: {counts.squareTables}</div>
-          <div>Round Tables: {counts.roundTables}</div>
-          <div>High Top Tables: {counts.highTopTables}</div>
-          <div>Total Tables: {counts.totalTables}</div>
-          <div>Attached Chairs on Tables: {counts.attachedChairsOnTables}</div>
-          <div>Single Chairs: {counts.singleChairs}</div>
-          <div>Chair Row Groups: {counts.chairRowGroups}</div>
-          <div>Chairs in Rows: {counts.chairsInRows}</div>
-          <div>Chair Block Groups: {counts.chairBlockGroups}</div>
-          <div>Chairs in Blocks: {counts.chairsInBlocks}</div>
-          <div className="font-semibold">Total Chairs: {counts.totalChairs}</div>
-        </div>
-      </div>
-
-      <div className="bg-white p-4 rounded-lg shadow border">
+      <div className="bg-white p-4 rounded-lg shadow-xl border border-gray-300">
         <Stage ref={stageRef} width={width} height={height}>
           <Layer>
             <Rect
@@ -1929,68 +2029,114 @@ export default function RoomCanvas() {
               />
             ))}
 
-            {dividerMode !== "full" && (
-              <Line
-                points={[0, dividerY, width, dividerY]}
-                stroke="black"
-                strokeWidth={2}
-                dash={[10, 5]}
-              />
-            )}
-
-            {dividerMode === "top" && (
-              <Rect
-                x={0}
-                y={dividerY}
-                width={width}
-                height={height - dividerY}
-                fill="rgba(0,0,0,0.06)"
-                listening={false}
-              />
-            )}
-
-            {dividerMode === "bottom" && (
-              <Rect
-                x={0}
-                y={0}
-                width={width}
-                height={dividerY}
-                fill="rgba(0,0,0,0.06)"
-                listening={false}
-              />
-            )}
-
-            {selectedRoom === "accursi" && (
-              <>
-                <Text
-                  x={8}
-                  y={8}
-                  text="Window side"
-                  fontSize={14}
-                  fontStyle="bold"
-                  fill="black"
-                  listening={false}
+            {dividerMode !== "full" &&
+              (isLandscape ? (
+                <Line
+                  points={[dividerX, 0, dividerX, height]}
+                  stroke="black"
+                  strokeWidth={2}
+                  dash={[10, 5]}
                 />
-                <Text
-                  x={8}
-                  y={height - 24}
-                  text="B Side"
-                  fontSize={14}
-                  fontStyle="bold"
-                  fill="black"
-                  listening={false}
+              ) : (
+                <Line
+                  points={[0, dividerY, width, dividerY]}
+                  stroke="black"
+                  strokeWidth={2}
+                  dash={[10, 5]}
                 />
-              </>
-            )}
+              ))}
 
-            <Text
-              x={8}
-              y={height - 42}
-              text="Scale: 1 ft = 10 px"
-              fontSize={12}
-              fill="black"
-              listening={false}
-            />
+{dividerMode === "top" &&
+  (isLandscape ? (
+    <Rect
+      x={dividerX}
+      y={0}
+      width={width - dividerX}
+      height={height}
+      fill="rgba(0,0,0,0.06)"
+      listening={false}
+    />
+  ) : (
+    <Rect
+      x={0}
+      y={dividerY}
+      width={width}
+      height={height - dividerY}
+      fill="rgba(0,0,0,0.06)"
+      listening={false}
+    />
+  ))}
+
+{dividerMode === "bottom" &&
+  (isLandscape ? (
+    <Rect
+      x={0}
+      y={0}
+      width={dividerX}
+      height={height}
+      fill="rgba(0,0,0,0.06)"
+      listening={false}
+    />
+  ) : (
+    <Rect
+      x={0}
+      y={0}
+      width={width}
+      height={dividerY}
+      fill="rgba(0,0,0,0.06)"
+      listening={false}
+    />
+  ))}
+
+{selectedRoom === "accursi" && (
+  <>
+    {isLandscape ? (
+      <>
+        <Text
+          x={8}
+          y={8}
+          text="Window side"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+
+        <Text
+          x={width - 52}
+          y={8}
+          text="B Side"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+      </>
+    ) : (
+      <>
+        <Text
+          x={8}
+          y={8}
+          text="Window side"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+
+        <Text
+          x={8}
+          y={height - 24}
+          text="B Side"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+      </>
+    )}
+  </>
+)}
 
             {tables.map((table) => {
               const isSelected = selectedTableId === table.id;
@@ -2253,6 +2399,133 @@ export default function RoomCanvas() {
           </Layer>
         </Stage>
       </div>
+      {exportModalOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div className="w-full max-w-2xl rounded-xl bg-white p-6 text-black shadow-2xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-bold">Export Layout Details</h2>
+
+        <button
+          onClick={() => setExportModalOpen(false)}
+          className="rounded bg-gray-200 px-3 py-1 text-black"
+        >
+          X
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <input
+          type="text"
+          value={layoutName}
+          onChange={(e) => setLayoutName(e.target.value)}
+          placeholder="Layout name"
+          className="rounded border border-gray-400 bg-white p-2 text-black"
+        />
+
+        <input
+          type="text"
+          value={renterName}
+          onChange={(e) => setRenterName(e.target.value)}
+          placeholder="Renter name"
+          className="rounded border border-gray-400 bg-white p-2 text-black"
+        />
+
+        <input
+          type="text"
+          value={eventType}
+          onChange={(e) => setEventType(e.target.value)}
+          placeholder="Event type"
+          className="rounded border border-gray-400 bg-white p-2 text-black"
+        />
+
+        <input
+          type="text"
+          value={guestCount}
+          onChange={(e) => setGuestCount(e.target.value)}
+          placeholder="Expected guest count"
+          className="rounded border border-gray-400 bg-white p-2 text-black"
+        />
+
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Setup notes"
+          className="md:col-span-2 min-h-[110px] rounded border border-gray-400 bg-white p-2 text-black"
+        />
+      </div>
+
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={() => setExportModalOpen(false)}
+          className="rounded bg-gray-300 px-4 py-2 text-black"
+        >
+          Cancel
+        </button>
+
+        <button
+          onClick={() => {
+            setExportModalOpen(false);
+            exportAsPdf();
+          }}
+          className="rounded bg-black px-4 py-2 text-white"
+        >
+          Export PDF
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+{saveModalOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+    <div className="w-full max-w-md rounded-xl bg-white p-6 text-black shadow-2xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-bold">Save Layout As</h2>
+
+        <button
+          onClick={() => setSaveModalOpen(false)}
+          className="rounded bg-gray-200 px-3 py-1 text-black"
+        >
+          X
+        </button>
+      </div>
+
+      <input
+        type="text"
+        value={saveNameInput}
+        onChange={(e) => setSaveNameInput(e.target.value)}
+        placeholder="Layout name"
+        className="w-full rounded border border-gray-400 bg-white p-2 text-black"
+        autoFocus
+      />
+
+      <div className="mt-5 flex justify-end gap-3">
+        <button
+          onClick={() => setSaveModalOpen(false)}
+          className="rounded bg-gray-300 px-4 py-2 text-black"
+        >
+          Cancel
+        </button>
+
+        <button
+          onClick={() => {
+            const trimmed = saveNameInput.trim();
+            if (!trimmed) return;
+
+            setLayoutName(trimmed);
+            setSaveModalOpen(false);
+
+            setTimeout(() => {
+              saveCurrentLayout();
+            }, 0);
+          }}
+          className="rounded bg-blue-600 px-4 py-2 text-white"
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
