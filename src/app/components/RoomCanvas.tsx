@@ -1624,81 +1624,6 @@ export default function RoomCanvas() {
     selectOnly("table", newTable.id);
   }
 
-  function addTableRow() {
-    const countInput = window.prompt("How many 6 ft tables in this row?", "5");
-    if (countInput === null) return;
-  
-    const tableCount = Math.max(1, Math.min(20, Math.floor(Number(countInput))));
-  
-    const orientationInput = window.prompt(
-      'Type "h" for horizontal row or "v" for vertical row.',
-      "h"
-    );
-    if (orientationInput === null) return;
-  
-    const isVertical = orientationInput.trim().toLowerCase() === "v";
-  
-    const chairInput = window.prompt(
-      "How many chairs per table? (0-8)",
-      "6"
-    );
-    if (chairInput === null) return;
-  
-    const rawChairCount = Math.max(0, Math.min(8, Math.floor(Number(chairInput))));
-  
-    const layoutInput = window.prompt(
-      'Chair layout: type "one" for one side only, or "even" for evenly spread.',
-      "even"
-    );
-  
-    const seatLayout: SeatLayout =
-      layoutInput?.trim().toLowerCase() === "one" ? "oneSide" : "even";
-  
-    const seatCount =
-      seatLayout === "oneSide"
-        ? Math.min(rawChairCount, 4)
-        : rawChairCount;
-  
-    const spawn = getDefaultSpawnPoint();
-  
-    const tableWidth = 6 * scale;
-    const tableHeight = 2.5 * scale;
-  
-    const gap = 0.35 * scale;
-  
-    const stepX = isVertical ? 0 : tableWidth + gap;
-    const stepY = isVertical ? tableHeight + gap : 0;
-  
-    const totalWidth = isVertical ? tableWidth : tableCount * tableWidth + (tableCount - 1) * gap;
-    const totalHeight = isVertical ? tableCount * tableHeight + (tableCount - 1) * gap : tableHeight;
-  
-    const startX = spawn.x - totalWidth / 2 + tableWidth / 2;
-    const startY = spawn.y - totalHeight / 2 + tableHeight / 2;
-  
-    const newTables: TableItem[] = Array.from({ length: tableCount }).map(
-      (_, index) =>
-        normalizeTable({
-          id: Date.now() + index,
-          type: "rect",
-          x: snapToGrid(startX + index * stepX),
-          y: snapToGrid(startY + index * stepY),
-          width: tableWidth,
-          height: tableHeight,
-          rotation: 0,
-          showAttachedChairs: seatCount > 0,
-          seatCount,
-          seatLayout,
-        })
-    );
-  
-    setRoomTables((prev) => ({
-      ...prev,
-      [selectedRoom]: [...prev[selectedRoom], ...newTables],
-    }));
-  
-    selectOnly("table", newTables[0].id);
-  }
-
   function addChair() {
     const spawn = getDefaultSpawnPoint();
 
@@ -1778,8 +1703,8 @@ export default function RoomCanvas() {
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 bg-white text-black p-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="min-h-screen flex flex-col items-center gap-6 bg-gray-100 text-black p-6">
+      <div className="flex flex-wrap items-center gap-4 bg-white p-4 rounded-lg shadow">
         <select
           value={selectedRoom}
           onChange={(e) => {
@@ -1816,13 +1741,6 @@ export default function RoomCanvas() {
 
         <button onClick={addHighTopTable} className="rounded bg-blue-600 px-4 py-2 text-white">
           Add High Top
-        </button>
-
-        <button
-        onClick={addTableRow}
-        className="rounded bg-blue-800 px-4 py-2 text-white"
-        >
-        Add Table Row
         </button>
 
         <button onClick={addChair} className="rounded bg-green-600 px-4 py-2 text-white">
@@ -1977,7 +1895,7 @@ export default function RoomCanvas() {
         </div>
       </div>
 
-      <div className="border border-gray-300 bg-white p-2">
+      <div className="bg-white p-4 rounded-lg shadow border">
         <Stage ref={stageRef} width={width} height={height}>
           <Layer>
             <Rect
