@@ -3,7 +3,7 @@
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from "react-konva";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type RoomKey = "kinsmen" | "accursi";
+type RoomKey = "kinsmen" | "accursi"| "opth";
 type TableType = "rect" | "round" | "highTop" | "square";
 type DividerMode = "full" | "top" | "bottom";
 type SeatLayout = "none" | "oneSide" | "even";
@@ -59,6 +59,17 @@ type ChairBlockItem = {
   colSpacing: number;
   rowSpacing: number;
   rotation: number;
+};
+
+type MiscItem = {
+  id: number;
+  label: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+  fill: string;
 };
 
 type LayoutMetadata = {
@@ -131,7 +142,7 @@ export default function RoomCanvas() {
 
   const rooms: Record<
     RoomKey,
-    { name: string; widthFt: number; heightFt: number; dividerFt: number }
+    { name: string; widthFt: number; heightFt: number; dividerFt: number | null }
   > = {
     kinsmen: {
       name: "Kinsmen Room",
@@ -144,6 +155,12 @@ export default function RoomCanvas() {
       widthFt: 51.5,
       heightFt: 72,
       dividerFt: 36,
+    },
+    opth: {
+      name: "OPTH Room",
+      widthFt: 35.3,
+      heightFt: 48.5,
+      dividerFt: null,
     },
   };
 
@@ -161,6 +178,8 @@ export default function RoomCanvas() {
   const [selectedChairId, setSelectedChairId] = useState<number | null>(null);
   const [selectedChairRowId, setSelectedChairRowId] = useState<number | null>(null);
   const [selectedChairBlockId, setSelectedChairBlockId] = useState<number | null>(null);
+  const [selectedMiscId, setSelectedMiscId] = useState<number | null>(null);
+
 
   const [rowChairCount, setRowChairCount] = useState<number>(5);
   const [blockRows, setBlockRows] = useState<number>(5);
@@ -178,6 +197,8 @@ export default function RoomCanvas() {
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState("");
 
+  const [miscMenuOpen, setMiscMenuOpen] = useState(false);
+
   const [roomTables, setRoomTables] = useState<Record<RoomKey, TableItem[]>>({
     kinsmen: [
       normalizeTable({
@@ -191,27 +212,38 @@ export default function RoomCanvas() {
       }),
     ],
     accursi: [],
+    opth:[]
   });
 
   const [roomChairs, setRoomChairs] = useState<Record<RoomKey, ChairItem[]>>({
     kinsmen: [],
     accursi: [],
+    opth: [],
   });
 
   const [roomChairRows, setRoomChairRows] = useState<Record<RoomKey, ChairRowItem[]>>({
     kinsmen: [],
     accursi: [],
+    opth: [],
   });
 
   const [roomChairBlocks, setRoomChairBlocks] = useState<Record<RoomKey, ChairBlockItem[]>>({
     kinsmen: [],
     accursi: [],
+    opth: [],
   });
+
+  const [roomMiscItems, setRoomMiscItems] = useState<Record<RoomKey, MiscItem[]>>({
+    kinsmen: [],
+    accursi: [],
+    opth: [],
+  });
+
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-
+  
     try {
       const parsed: SavedLayout[] = JSON.parse(raw);
       const normalized = parsed.map((layout) => ({
@@ -223,8 +255,12 @@ export default function RoomCanvas() {
           accursi: (layout.roomTables?.accursi ?? []).map((table) =>
             normalizeTable(table)
           ),
+          opth: (layout.roomTables?.opth ?? []).map((table) =>
+            normalizeTable(table)
+          ),
         },
       }));
+  
       setSavedLayouts(normalized);
     } catch (error) {
       console.error("Failed to load saved layouts:", error);
@@ -242,7 +278,7 @@ export default function RoomCanvas() {
   const width = (isLandscape ? room.heightFt : room.widthFt) * scale;
   const height = (isLandscape ? room.widthFt : room.heightFt) * scale;
 
-  const dividerY = room.dividerFt * scale;
+  const dividerY = room.dividerFt ? room.dividerFt * scale : 0;
   const dividerX = width / 2;
 
   const counts = useMemo(() => {
@@ -342,6 +378,10 @@ export default function RoomCanvas() {
   }
 
   function getActiveBounds() {
+    if (!room.dividerFt) {
+      return { minX: 0, maxX: width, minY: 0, maxY: height };
+    }
+
     if (dividerMode === "full") {
       return { minX: 0, maxX: width, minY: 0, maxY: height };
     }
@@ -371,13 +411,15 @@ export default function RoomCanvas() {
     setSelectedChairId(null);
     setSelectedChairRowId(null);
     setSelectedChairBlockId(null);
+    setSelectedMiscId(null);
   }
 
-  function selectOnly(type: "table" | "chair" | "chairRow" | "chairBlock", id: number) {
+  function selectOnly(type: "table" | "chair" | "chairRow" | "chairBlock" | "misc", id: number) {
     setSelectedTableId(type === "table" ? id : null);
     setSelectedChairId(type === "chair" ? id : null);
     setSelectedChairRowId(type === "chairRow" ? id : null);
     setSelectedChairBlockId(type === "chairBlock" ? id : null);
+    setSelectedMiscId(type === "misc" ? id : null);
   }
 
   function clearMetadataInputs() {
@@ -572,6 +614,18 @@ export default function RoomCanvas() {
         ),
       }));
       setSelectedChairBlockId(null);
+    }
+
+    if (selectedMiscId !== null) {
+      setRoomMiscItems((prev) => ({
+        ...prev,
+        [selectedRoom]: prev[selectedRoom].filter(
+          (item) => item.id !== selectedMiscId
+        ),
+      }));
+    
+      setSelectedMiscId(null);
+      return;
     }
   }
 
@@ -837,6 +891,96 @@ export default function RoomCanvas() {
     printWindow.document.close();
   }
 
+  function applyGenericMarketPreset() {
+    const baseId = Date.now();
+  
+    setSelectedRoom("accursi");
+    setDividerMode("full");
+    setOrientation("landscape");
+  
+    setLayoutName("Generic Market");
+    setRenterName("Preset");
+    setEventType("Market");
+    setGuestCount("40");
+    setNotes("40 tables designed with a sign in, and a flow of walking.");
+  
+    const tableWidth = 6 * scale;
+    const tableHeight = 2.5 * scale;
+    const chairWidth = 1.75 * scale;
+    const chairHeight = 1.5 * scale;
+  
+    const ft = (n: number) => n * scale;
+  
+    const tableData = [
+      [1, 61, 47, 90],
+      [2, 49, 15, 90], [3, 49, 22, 90], [4, 49, 29, 90], [5, 49, 37, 90], [6, 49, 44, 90], [7, 49, 49, 90],
+      [8, 60, 4, 0], [9, 26, 4, 0], [10, 37, 4, 0], [11, 49, 4, 0], [12, 15, 4, 0], [13, 6, 4, 0],
+      [14, 38, 29, 90], [15, 66, 15, 90], [16, 66, 22, 90], [17, 66, 29, 90], [18, 38, 22, 90], [19, 38, 15, 90],
+      [20, 66, 44, 90], [21, 66, 37, 90], [22, 66, 40.5, 90], [23, 38, 37, 90], [24, 38, 49, 90], [25, 38, 44, 90],
+      [26, 5, 15, 90], [27, 5, 29, 90], [28, 5, 22, 90], [29, 5, 49, 90], [30, 5, 44, 90], [31, 5, 37, 90],
+      [32, 50, 50, 0], [33, 39, 50, 0], [34, 29, 50, 0], [35, 20, 50, 0], [36, 10, 50, 0],
+      [37, 18, 15, 90], [38, 18, 22, 90], [39, 18, 29, 90], [40, 18, 44, 90], [41, 18, 37, 90], [42, 18, 49, 90],
+    ];
+  
+    const chairData = tableData.map(([num, x, y, rotation]) => {
+      const chairOffset = 4;
+  
+      if (rotation === 0) {
+        const chairY = y < 10 ? y - 2.6 : y + 2.6;
+        return [num, x, chairY, 0];
+      }
+  
+      const chairX = x < 10 ? x - chairOffset : x + chairOffset;
+      return [num, chairX, y, 0];
+    });
+  
+    const newTables: TableItem[] = tableData.map(([num, x, y, rotation]) =>
+      normalizeTable({
+        id: baseId + num,
+        type: "rect",
+        x: ft(x),
+        y: ft(y),
+        width: tableWidth,
+        height: tableHeight,
+        rotation,
+        showAttachedChairs: false,
+        seatCount: 0,
+        seatLayout: "none",
+      })
+    );
+  
+    const newChairs: ChairItem[] = chairData.map(([num, x, y, rotation]) => ({
+      id: baseId + 1000 + num,
+      x: ft(x),
+      y: ft(y),
+      width: chairWidth,
+      height: chairHeight,
+      rotation,
+    }));
+  
+    setRoomTables((prev) => ({
+      ...prev,
+      accursi: newTables,
+    }));
+  
+    setRoomChairs((prev) => ({
+      ...prev,
+      accursi: newChairs,
+    }));
+  
+    setRoomChairRows((prev) => ({
+      ...prev,
+      accursi: [],
+    }));
+  
+    setRoomChairBlocks((prev) => ({
+      ...prev,
+      accursi: [],
+    }));
+  
+    clearSelection();
+  }
+
   function buildCurrentLayout(idOverride?: string): SavedLayout | null {
     const trimmedName = layoutName.trim();
     if (!trimmedName) return null;
@@ -901,6 +1045,10 @@ export default function RoomCanvas() {
       accursi: (layout.roomTables?.accursi ?? []).map((table) =>
         normalizeTable(table)
       ),
+      opth: (layout.roomTables?.opth ?? []).map((table) =>
+        normalizeTable(table)
+      ),
+      
     };
 
     setSelectedRoom(layout.selectedRoom);
@@ -1287,6 +1435,21 @@ export default function RoomCanvas() {
         }),
       }));
     }
+
+    if (selectedMiscId !== null) {
+      setRoomMiscItems((prev) => ({
+        ...prev,
+        [selectedRoom]: prev[selectedRoom].map((item) =>
+          item.id === selectedMiscId
+            ? { ...item, rotation: (item.rotation + 90) % 360 }
+            : item
+        ),
+      }));
+      return;
+    }
+
+
+
   }
 
   function getDisplayNumber(tableId: number) {
@@ -1799,6 +1962,176 @@ export default function RoomCanvas() {
 
     selectOnly("chairBlock", newChairBlock.id);
   }
+  
+  function addCoatRack() {
+    const widthFt = 5;
+    const heightFt = 2;
+  
+    const newCoatRack: MiscItem = {
+      id: Date.now(),
+      label: "Coat Rack",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#C0C0C0", // silver
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newCoatRack],
+    }));
+  }
+
+
+  function addPodium() {
+    const widthFt = 2;
+    const heightFt = 3;
+  
+    const newPodium: MiscItem = {
+      id: Date.now(),
+      label: "POD.",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#E5D3B3", // beige
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newPodium],
+    }));
+  }
+
+  function addFridge() {
+    const widthFt = 4;
+    const heightFt = 6;
+  
+    const newFridge: MiscItem = {
+      id: Date.now(),
+      label: "Fridge",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#F97316", // orange
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newFridge],
+    }));
+  }
+
+  function addScreen() {
+    const widthFt = 2;
+    const heightFt = 6;
+  
+    const newScreen: MiscItem = {
+      id: Date.now(),
+      label: "Screen",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#000000", // black
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newScreen],
+    }));
+  }
+
+  function addStage() {
+    const widthFt = 4;
+    const heightFt = 4;
+  
+    const newStage: MiscItem = {
+      id: Date.now(),
+      label: "Stage",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#8B5A2B", // brown
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newStage],
+    }));
+  }
+
+  function addSmallCouch() {
+    const widthFt = 3;
+    const heightFt = 3;
+  
+    const newCouch: MiscItem = {
+      id: Date.now(),
+      label: "Small Couch",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#7C3AED", // purple
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newCouch],
+    }));
+  }
+
+  function addBigCouch() {
+    const widthFt = 3;
+    const heightFt = 6;
+  
+    const newCouch: MiscItem = {
+      id: Date.now(),
+      label: "Big Couch",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#7C3AED", // same purple
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newCouch],
+    }));
+  }
+
+  function addBar() {
+    const widthFt = 70 / 12; // inches → feet
+    const heightFt = 36 / 12;
+  
+    const newBar: MiscItem = {
+      id: Date.now(),
+      label: "Bar",
+      x: width / 2,
+      y: height / 2,
+      width: widthFt * scale,
+      height: heightFt * scale,
+      rotation: 0,
+      fill: "#9CA3AF", // gray
+    };
+  
+    setRoomMiscItems((prev) => ({
+      ...prev,
+      [selectedRoom]: [...prev[selectedRoom], newBar],
+    }));
+  }
+
 
   return (
     <div className="min-h-screen flex flex-col items-center gap-6 bg-gray-900 text-white p-6">
@@ -1808,9 +2141,12 @@ export default function RoomCanvas() {
 {/* LEFT SIDE: ACTIONS + PRESETS */}
 <div className="flex flex-wrap items-center gap-3">
 
-  <button onClick={() => applyPreset("banquet")} className="rounded bg-purple-600 px-4 py-2 text-white">
-    Presets
-  </button>
+<button
+  onClick={applyGenericMarketPreset}
+  className="rounded bg-purple-600 px-4 py-2 text-white"
+>
+  Presets
+</button>
 
   <button onClick={duplicateSelectedItem} className="rounded bg-cyan-700 px-4 py-2 text-white">
     Copy
@@ -1846,6 +2182,7 @@ export default function RoomCanvas() {
   >
     <option value="kinsmen">Kinsmen Room</option>
     <option value="accursi">Accursi Room</option>
+    <option value="opth">OPTH Room</option>
   </select>
 
   <select
@@ -1881,6 +2218,102 @@ export default function RoomCanvas() {
 
   {/* LEFT GROUP: TABLES + CHAIRS */}
   <div className="flex gap-3">
+
+
+  <div className="relative">
+  <button
+    onClick={() => setMiscMenuOpen((open) => !open)}
+    className="rounded bg-gray-600 px-4 py-2 text-white"
+  >
+    Other Objects
+  </button>
+
+  {miscMenuOpen && (
+    <div className="absolute z-50 mt-2 w-48 rounded bg-white text-black shadow-lg border border-gray-300">
+      <button
+        onClick={() => {
+          addBar();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Bar
+      </button>
+
+      <button
+        onClick={() => {
+          addStage();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Stage
+      </button>
+
+      <button
+        onClick={() => {
+          addScreen();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Screen
+      </button>
+
+      <button
+        onClick={() => {
+          addFridge();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Fridge
+      </button>
+
+      <button
+        onClick={() => {
+          addPodium();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Podium
+      </button>
+
+      <button
+        onClick={() => {
+          addCoatRack();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Coat Rack
+      </button>
+
+      <button
+        onClick={() => {
+          addSmallCouch();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Small Couch
+      </button>
+
+      <button
+        onClick={() => {
+          addBigCouch();
+          setMiscMenuOpen(false);
+        }}
+        className="block w-full px-4 py-2 text-left hover:bg-gray-100"
+      >
+        Big Couch
+      </button>
+
+    </div>
+  )}
+</div>
+
 
     <div className="relative">
       <button
@@ -2029,8 +2462,7 @@ export default function RoomCanvas() {
               />
             ))}
 
-            {dividerMode !== "full" &&
-              (isLandscape ? (
+            {room.dividerFt && dividerMode !== "full" && (isLandscape ? (
                 <Line
                   points={[dividerX, 0, dividerX, height]}
                   stroke="black"
@@ -2046,7 +2478,7 @@ export default function RoomCanvas() {
                 />
               ))}
 
-{dividerMode === "top" &&
+{room.dividerFt && dividerMode === "top" &&
   (isLandscape ? (
     <Rect
       x={dividerX}
@@ -2067,7 +2499,7 @@ export default function RoomCanvas() {
     />
   ))}
 
-{dividerMode === "bottom" &&
+{room.dividerFt && dividerMode === "bottom" &&
   (isLandscape ? (
     <Rect
       x={0}
@@ -2088,6 +2520,7 @@ export default function RoomCanvas() {
     />
   ))}
 
+{/* ROOM LABELS */}
 {selectedRoom === "accursi" && (
   <>
     {isLandscape ? (
@@ -2101,7 +2534,6 @@ export default function RoomCanvas() {
           fill="black"
           listening={false}
         />
-
         <Text
           x={width - 52}
           y={8}
@@ -2123,7 +2555,6 @@ export default function RoomCanvas() {
           fill="black"
           listening={false}
         />
-
         <Text
           x={8}
           y={height - 24}
@@ -2134,6 +2565,100 @@ export default function RoomCanvas() {
           listening={false}
         />
       </>
+    )}
+  </>
+)}
+
+{selectedRoom === "kinsmen" && (
+  <>
+    {isLandscape ? (
+      <>
+        <Text
+          x={width / 2 - 45}
+          y={8}
+          text="Walking track"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+        <Text
+          x={8}
+          y={height - 24}
+          text="211"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+        <Text
+          x={width - 32}
+          y={height - 24}
+          text="212"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+      </>
+    ) : (
+      <>
+        <Text
+          x={8}
+          y={height / 2 + 45}
+          text="Walking track"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          rotation={-90}
+          listening={false}
+        />
+        <Text
+          x={8}
+          y={8}
+          text="212"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+        <Text
+          x={8}
+          y={height - 24}
+          text="211"
+          fontSize={14}
+          fontStyle="bold"
+          fill="black"
+          listening={false}
+        />
+      </>
+    )}
+  </>
+)}
+
+{selectedRoom === "opth" && (
+  <>
+    {isLandscape ? (
+      <Text
+        x={8}
+        y={height / 2 + 35}
+        text="Front doors"
+        fontSize={14}
+        fontStyle="bold"
+        fill="black"
+        rotation={-90}
+        listening={false}
+      />
+    ) : (
+      <Text
+        x={width / 2 - 38}
+        y={height - 24}
+        text="Front doors"
+        fontSize={14}
+        fontStyle="bold"
+        fill="black"
+        listening={false}
+      />
     )}
   </>
 )}
@@ -2396,6 +2921,56 @@ export default function RoomCanvas() {
                 </Group>
               );
             })}
+
+          {roomMiscItems[selectedRoom].map((item) => {
+            const isSelected = selectedMiscId === item.id;
+
+            return (
+              <Group
+                key={item.id}
+                x={item.x}
+                y={item.y}
+                rotation={item.rotation}
+                draggable
+                onClick={() => selectOnly("misc", item.id)}
+                onTap={() => selectOnly("misc", item.id)}
+                onDragEnd={(e) => {
+                  const { x, y } = e.target.position();
+
+                  setRoomMiscItems((prev) => ({
+                    ...prev,
+                    [selectedRoom]: prev[selectedRoom].map((i) =>
+                      i.id === item.id ? { ...i, x, y } : i
+                    ),
+                  }));
+                }}
+              >
+                <Rect
+                  x={-item.width / 2}
+                  y={-item.height / 2}
+                  width={item.width}
+                  height={item.height}
+                  fill={item.fill}
+                  stroke={isSelected ? "orange" : "black"}
+                  strokeWidth={isSelected ? 3 : 1}
+                  cornerRadius={2}
+                />
+
+                <Text
+                  x={-item.width / 2}
+                  y={-7}
+                  width={item.width}
+                  text={item.label}
+                  align="center"
+                  fontSize={14}
+                  fontStyle="bold"
+                  fill={item.fill === "#000000" ? "white" : "black"}
+                  listening={false}
+                />
+              </Group>
+            );
+          })}
+
           </Layer>
         </Stage>
       </div>
